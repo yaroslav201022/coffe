@@ -81,8 +81,5 @@ async def process_brand(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Принято!", reply_markup=get_main_menu())
 
-async def main():
-    await dp.start_polling(bot)
-
-if name == "__main__":
-    asyncio.run(main())
+# Запуск напрямую без проверки имени
+asyncio.run(dp.start_polling(bot))
