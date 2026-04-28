@@ -7,114 +7,119 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
-# Чтение переменных окружения (настраиваются в панели BotHost)
-API_TOKEN = os.getenv('8258796089:AAF14YXPMnYLJm1htV5D_byBP1BDbJpXeXk')
+# 1. Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 2. Получение данных из переменных окружения
+API_TOKEN = os.getenv('BOT_TOKEN')
+RAW_ADMIN_ID = os.getenv('ADMIN_ID')
+
+# Проверка токена
+if not API_TOKEN:
+    logger.error("Переменная BOT_TOKEN не установлена!")
+    exit(1)
+
+# Проверка ID админа
 try:
-    ADMIN_ID = int(os.getenv('160624362', 0))
-except (TypeError, ValueError):
+    ADMIN_ID = int(RAW_ADMIN_ID) if RAW_ADMIN_ID else 0
+except ValueError:
+    logger.error(f"Некорректный ADMIN_ID: {RAW_ADMIN_ID}")
     ADMIN_ID = 0
 
-# Проверка наличия настроек
-if not API_TOKEN:
-    exit("Критическая ошибка: Переменная BOT_TOKEN не найдена в окружении!")
-if not ADMIN_ID:
-    exit("Критическая ошибка: Переменная ADMIN_ID не настроена или имеет неверный формат!")
+if ADMIN_ID == 0:
+    logger.error("ADMIN_ID не настроен! Отчеты не будут приходить.")
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN)
+# 3. Инициализация бота
+bot = Bot(token=API_TOKEN.strip())
 dp = Dispatcher()
 
-# Состояния для опроса (Машина состояний)
+# 4. Состояния опроса
 class CoffeeReview(StatesGroup):
     choosing_number = State()
     writing_feedback = State()
     brand_discussion = State()
 
-# Клавиатуры
-def main_menu():
-    buttons = [
-        [KeyboardButton(text="☕ Оценить кофе")],
-        [KeyboardButton(text="💡 Обсудить бренд")]
-    ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
-
-def coffee_numbers():
-    buttons = [
-        [KeyboardButton(text="1"), KeyboardButton(text="2"), KeyboardButton(text="3")],
-        [KeyboardButton(text="4"), KeyboardButton(text="5")]
-    ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
-
-# Обработка команды /start
-@dp.message(Command("start"))
-async def start(message: types.Message):
-    await message.answer(
-        "Привет! Помоги нам выбрать лучший кофе. Выбери действие:", 
-        reply_markup=main_menu()
+# 5. Клавиатуры
+def get_main_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="☕ Оценить кофе")],
+            [KeyboardButton(text="💡 Обсудить бренд")]
+        ],
+        resize_keyboard=True
     )
 
-# --- ЛОГИКА ДЕГУСТАЦИИ ---
+def get_numbers_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="1"), KeyboardButton(text="2"), KeyboardButton(text="3")],
+            [KeyboardButton(text="4"), KeyboardButton(text="5")]
+        ],
+        resize_keyboard=True
+    )
+
+# 6. Обработка команд и сообщений
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.answer(
+        "Привет! Мы проводим дегустацию кофе. Выберите действие:",
+        reply_markup=get_main_menu()
+    )
+
 @dp.message(F.text == "☕ Оценить кофе")
-async def choose_coffee(message: types.Message, state: FSMContext):
+async def start_review(message: types.Message, state: FSMContext):
     await state.set_state(CoffeeReview.choosing_number)
-    await message.answer("Выбери номер образца кофе (1-5):", reply_markup=coffee_numbers())
+    await message.answer("Выберите номер образца (1-5):", reply_markup=get_numbers_keyboard())
 
 @dp.message(CoffeeReview.choosing_number)
-async def process_number(message: types.Message, state: FSMContext):
-    if message.text.isdigit() and 1 <= int(message.text) <= 5:
-        await state.update_data(coffee_id=message.text)
+async def coffee_number_chosen(message: types.Message, state: FSMContext):
+    if message.text in ["1", "2", "3", "4", "5"]:
+        await state.update_data(coffee_num=message.text)
         await state.set_state(CoffeeReview.writing_feedback)
         await message.answer(
-            f"Образец №{message.text} принят. \n\nНапиши отзыв: что понравилось, а что нет?", 
+            f"Вы выбрали образец №{message.text}. Что вам в нем понравилось или не понравилось?",
             reply_markup=ReplyKeyboardRemove()
         )
     else:
-        await message.answer("Пожалуйста, используй кнопки 1-5 для выбора номера.")
+        await message.answer("Пожалуйста, выберите номер от 1 до 5 на клавиатуре.")
 
 @dp.message(CoffeeReview.writing_feedback)
-async def save_feedback(message: types.Message, state: FSMContext):
-    user_data = await state.get_data()
-    coffee_id = user_data['coffee_id']
+async def process_feedback(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    coffee_num = data.get("coffee_num")
+    user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
     
-    # Отчет для тебя/папы
-    report = (f"📥 **НОВЫЙ ОТЗЫВ ПО КОФЕ**\n"
-              f"--------------------------\n"
-              f"● **Образец:** №{coffee_id}\n"
-              f"● **От:** @{message.from_user.username or 'Без ника'}\n"
-              f"● **Имя:** {message.from_user.full_name}\n"
-              f"● **Текст:** {message.text}")
+    report = (f"📥 НОВЫЙ ОТЗЫВ\n"
+              f"Кофе: №{coffee_num}\n"
+              f"От: {user_info}\n"
+              f"Текст: {message.text}")
     
-    await bot.send_message(ADMIN_ID, report, parse_mode="Markdown")
+    if ADMIN_ID:
+        await bot.send_message(ADMIN_ID, report)
+    
     await state.clear()
-    await message.answer("Спасибо! Мы учтем твое мнение.", reply_markup=main_menu())
+    await message.answer("Спасибо за ваш отзыв!", reply_markup=get_main_menu())
 
-# --- ЛОГИКА БРЕНДА ---
 @dp.message(F.text == "💡 Обсудить бренд")
-async def brand_start(message: types.Message, state: FSMContext):
+async def brand_idea(message: types.Message, state: FSMContext):
     await state.set_state(CoffeeReview.brand_discussion)
-    await message.answer(
-        "Напиши свои идеи по названию бренда или комментарии к текущему варианту:", 
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await message.answer("Напишите свои идеи по названию или бренду:", reply_markup=ReplyKeyboardRemove())
 
 @dp.message(CoffeeReview.brand_discussion)
-async def brand_save(message: types.Message, state: FSMContext):
-    report = (f"💡 **ИДЕЯ ПО БРЕНДУ**\n"
-              f"--------------------------\n"
-              f"● **От:** @{message.from_user.username or 'Без ника'}\n"
-              f"● **Текст:** {message.text}")
+async def process_brand(message: types.Message, state: FSMContext):
+    user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+    report = f"💡 ИДЕЯ БРЕНДА\nОт: {user_info}\nТекст: {message.text}"
     
-    await bot.send_message(ADMIN_ID, report, parse_mode="Markdown")
+    if ADMIN_ID:
+        await bot.send_message(ADMIN_ID, report)
+        
     await state.clear()
-    await message.answer("Круто, спасибо за идею!", reply_markup=main_menu())
+    await message.answer("Ваша идея принята!", reply_markup=get_main_menu())
 
-# Запуск бота
+# 7. Запуск
 async def main():
-    logging.info("Бот запускается...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Бот остановлен")
+    asyncio.run(main())
