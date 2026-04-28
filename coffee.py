@@ -57,7 +57,10 @@ async def process_feedback(message: types.Message, state: FSMContext):
     user = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
     report = f"📥 ОТЗЫВ\nКофе: №{data.get('c_num')}\nОт: {user}\nТекст: {message.text}"
     if ADMIN_ID:
-        await bot.send_message(ADMIN_ID, report)
+        try:
+            await bot.send_message(ADMIN_ID, report)
+        except:
+            pass
     await state.clear()
     await message.answer("Спасибо!", reply_markup=get_main_menu())
 
@@ -71,7 +74,10 @@ async def process_brand(message: types.Message, state: FSMContext):
     user = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
     report = f"💡 БРЕНД\nОт: {user}\nТекст: {message.text}"
     if ADMIN_ID:
-        await bot.send_message(ADMIN_ID, report)
+        try:
+            await bot.send_message(ADMIN_ID, report)
+        except:
+            pass
     await state.clear()
     await message.answer("Принято!", reply_markup=get_main_menu())
 
