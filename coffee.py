@@ -89,25 +89,26 @@ async def rating_chosen(message: types.Message, state: FSMContext):
 @dp.message(CoffeeReview.details, F.text == "✅ Что понравилось")
 async def lead_pos(message: types.Message, state: FSMContext):
     await state.set_state(CoffeeReview.writing_positive)
-    await message.
-answer("Что понравилось?", reply_markup=get_back_button())
+    await message.answer("Напиши, что понравилось:", reply_markup=get_back_button())
 
 @dp.message(CoffeeReview.details, F.text == "❌ Что не понравилось")
 async def lead_neg(message: types.Message, state: FSMContext):
     await state.set_state(CoffeeReview.writing_negative)
-    await message.answer("Что не понравилось?", reply_markup=get_back_button())
+    await message.answer("Напиши, что не понравилось:", reply_markup=get_back_button())
 
 @dp.message(CoffeeReview.writing_positive)
 async def s_pos(message: types.Message, state: FSMContext):
-    await state.update_data(pos=message.text)
-    await state.set_state(CoffeeReview.details)
-    await message.answer("Записал. Еще что-то?", reply_markup=get_details_menu())
+    if message.text != "🔙 Назад":
+        await state.update_data(pos=message.text)
+        await state.set_state(CoffeeReview.details)
+        await message.answer("Записал. Еще что-то?", reply_markup=get_details_menu())
 
 @dp.message(CoffeeReview.writing_negative)
 async def s_neg(message: types.Message, state: FSMContext):
-    await state.update_data(neg=message.text)
-    await state.set_state(CoffeeReview.details)
-    await message.answer("Записал. Еще что-то?", reply_markup=get_details_menu())
+    if message.text != "🔙 Назад":
+        await state.update_data(neg=message.text)
+        await state.set_state(CoffeeReview.details)
+        await message.answer("Записал. Еще что-то?", reply_markup=get_details_menu())
 
 @dp.message(CoffeeReview.details, F.text == "🏁 Завершить и отправить")
 async def finish(message: types.Message, state: FSMContext):
@@ -127,16 +128,17 @@ async def brand_s(message: types.Message, state: FSMContext):
 
 @dp.message(CoffeeReview.brand_naming)
 async def p_brand(message: types.Message, state: FSMContext):
-    u = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
-    rep = f"💎 НАЗВАНИЕ: {message.text}\n👤 От: {u}"
-    if ADMIN_ID:
-        try: await bot.send_message(ADMIN_ID, rep)
-        except: pass
-    await state.clear()
-    await message.answer("Спасибо за вариант!", reply_markup=get_main_menu())
+    if message.text != "🔙 Назад":
+        u = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+        rep = f"💎 НАЗВАНИЕ: {message.text}\n👤 От: {u}"
+        if ADMIN_ID:
+            try: await bot.send_message(ADMIN_ID, rep)
+            except: pass
+        await state.clear()
+        await message.answer("Спасибо за вариант!", reply_markup=get_main_menu())
 
 async def start_bot():
     await dp.start_polling(bot)
 
-if name == "__main__":
+if __name__ == "__main__":
     asyncio.run(start_bot())
