@@ -45,7 +45,7 @@ def save_to_csv(data_list):
 def kb_main():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="☕ Оценить кофе", callback_data="start_eval")],
-        [InlineKeyboardButton(text="💎 Предложить название", callback_data="start_name")]
+        [InlineKeyboardButton(text="💎 Придумайте свое название", callback_data="start_name")]
     ])
 
 def kb_numbers():
@@ -76,14 +76,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Главное меню:", reply_markup=kb_main())
 
-# Секретная команда для папы
 @dp.message(Command("get_data"))
 async def send_data(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         if os.path.exists(FILENAME):
             await message.answer_document(FSInputFile(FILENAME), caption="Все результаты на текущий момент.")
         else:
-            await message.answer("Файл еще не создан. Нужно отправить хотя бы один отзыв.")
+            await message.answer("Файл еще не создан.")
 
 # Логика "Оценить кофе"
 @dp.callback_query(F.data == "start_eval")
@@ -96,7 +95,7 @@ async def select_rat(call: types.CallbackQuery, state: FSMContext):
     num = call.data.split("_")[1]
     await state.update_data(c_num=num)
     await state.set_state(CoffeeReview.rating)
-    await call.message.edit_text(f"Образец №{num}. Оцените вкус (1-10):", reply_markup=kb_ratings())
+    await call.message.edit_text(f"Образец №{num}.\nОцените вкус кофе по шкале от 1 до 10:", reply_markup=kb_ratings())
 
 @dp.callback_query(F.data.startswith("rat_"))
 async def select_details(call: types.CallbackQuery, state: FSMContext):
@@ -105,7 +104,6 @@ async def select_details(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.details)
     await call.message.edit_text("Добавьте подробности:", reply_markup=kb_details())
 
-# Переход к написанию текста (тут боту придется прислать новое сообщение, т.к. клавиатура исчезнет)
 @dp.callback_query(F.data == "write_pos")
 async def ask_pos(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.writing_pos)
@@ -116,7 +114,6 @@ async def ask_neg(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.writing_neg)
     await call.message.edit_text("Напишите, что вам НЕ понравилось:", reply_markup=kb_back("back_to_details"))
 
-# Прием текстовых сообщений
 @dp.message(CoffeeReview.writing_pos)
 async def get_pos(message: types.Message, state: FSMContext):
     await state.update_data(pos=message.text)
@@ -129,7 +126,6 @@ async def get_neg(message: types.Message, state: FSMContext):
     await state.set_state(CoffeeReview.details)
     await message.answer("Записано. Что-то еще?", reply_markup=kb_details())
 
-# Финиш
 @dp.callback_query(F.data == "finish_all")
 async def finish_survey(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -139,7 +135,7 @@ async def finish_survey(call: types.CallbackQuery, state: FSMContext):
     save_to_csv([now, u, data.get('c_num'), data.get('c_rating'), data.get('pos', '-'), data.get('neg', '-'), '-'])
     
     if ADMIN_ID:
-        try: await bot.send_message(ADMIN_ID, f"📥 НОВЫЙ ОТЗЫВ №{data.get('c_num')}\n⭐ Оценка: {data.get('c_rating')}/10\n👤 От: {u}")
+        try: await bot.send_message(ADMIN_ID, f"📥 ОТЗЫВ №{data.get('c_num')}\n⭐ Оценка: {data.get('c_rating')}/10\n👤 От: {u}")
         except: pass
         
     await state.clear()
@@ -164,7 +160,7 @@ async def save_brand_name(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Вариант сохранен!", reply_markup=kb_main())
 
-# Обработка "Назад" внутри инлайн-кнопок
+# Навигация Назад
 @dp.callback_query(F.data == "to_main")
 async def back_main(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -179,7 +175,7 @@ async def back_nums(call: types.CallbackQuery, state: FSMContext):
 async def back_rat(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.set_state(CoffeeReview.rating)
-    await call.message.edit_text(f"Образец №{data.get('c_num')}. Оцените вкус (1-10):", reply_markup=kb_ratings())
+    await call.message.edit_text(f"Образец №{data.get('c_num')}.\nОцените вкус кофе по шкале от 1 до 10:", reply_markup=kb_ratings())
 
 @dp.callback_query(F.data == "back_to_details")
 async def back_details(call: types.CallbackQuery, state: FSMContext):
