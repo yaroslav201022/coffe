@@ -11,7 +11,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFil
 
 logging.basicConfig(level=logging.INFO)
 
-# Конфигурация
 API_TOKEN = os.getenv('BOT_TOKEN')
 RAW_ADMIN_ID = os.getenv('ADMIN_ID')
 FILENAME = "coffee_results.csv"
@@ -32,7 +31,6 @@ class CoffeeReview(StatesGroup):
     writing_neg = State()
     brand_naming = State()
 
-# --- ФУНКЦИИ ---
 def save_to_csv(data_list):
     file_exists = os.path.isfile(FILENAME)
     with open(FILENAME, mode='a', newline='', encoding='utf-8-sig') as f:
@@ -41,7 +39,6 @@ def save_to_csv(data_list):
             writer.writerow(['Дата', 'Пользователь', 'Образец №', 'Оценка', 'Понравилось', 'Не понравилось', 'Название'])
         writer.writerow(data_list)
 
-# --- ИНЛАЙН-КЛАВИАТУРЫ ---
 def kb_main():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="☕ Оценить кофе", callback_data="start_eval")],
@@ -69,8 +66,6 @@ def kb_details():
 def kb_back(to_where):
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=to_where)]])
 
-# --- ОБРАБОТЧИКИ ---
-
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -81,8 +76,6 @@ async def send_data(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         if os.path.exists(FILENAME):
             await message.answer_document(FSInputFile(FILENAME), caption="Результаты дегустации.")
-        else:
-            await message.answer("Файл еще не создан.")
 
 @dp.callback_query(F.data == "start_eval")
 async def select_num(call: types.CallbackQuery, state: FSMContext):
@@ -99,7 +92,7 @@ async def select_rat(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("rat_"))
 async def select_details(call: types.CallbackQuery, state: FSMContext):
     rat = call.data.split("_")[1]
-    await state.update_data(c_rating=rat)
+    await state.update_data(c_rating=rat, last_msg_id=call.message.message_id)
     await state.set_state(CoffeeReview.details)
     await call.message.edit_text(
         "Вы можете добавить комментарии кнопками ниже.\n\n"
@@ -107,63 +100,79 @@ async def select_details(call: types.CallbackQuery, state: FSMContext):
         reply_markup=kb_details()
     )
 
+# --- ТУТ ИСПРАВЛЕННЫЕ ТЕКСТЫ ---
 @dp.callback_query(F.data == "write_pos")
 async def ask_pos(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.writing_pos)
-    await call.message.edit_text("Напишите, что вам ПОНРАВИЛОСЬ в этом кофе:", reply_markup=kb_back("back_to_details"))
+    await call.message.edit_text("Напишите в сообщении, что вам ПОНРАВИЛОСЬ в этом кофе:", reply_markup=kb_back("back_to_details"))
 
 @dp.callback_query(F.data == "write_neg")
 async def ask_neg(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.writing_neg)
-    await call.message.edit_text("Напишите, что вам НЕ понравилось:", reply_markup=kb_back("back_to_details"))
+    await call.message.edit_text("Напишите в сообщении, что вам НЕ ПОНРАВИЛОСЬ в этом кофе:", reply_markup=kb_back("back_to_details"))
 
-# ИСПРАВЛЕННЫЕ ПОДСКАЗКИ ТУТ
 @dp.message(CoffeeReview.writing_pos)
 async def get_pos(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     await state.update_data(pos=message.text)
     await state.set_state(CoffeeReview.details)
-    await message.answer("Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇", reply_markup=kb_details())
+    await message.delete()
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=data.get('last_msg_id'),
+        text="Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇",
+        reply_markup=kb_details()
+    )
 
 @dp.message(CoffeeReview.writing_neg)
 async def get_neg(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     await state.update_data(neg=message.text)
     await state.set_state(CoffeeReview.details)
-    await message.answer("Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇", reply_markup=kb_details())
+    await message.delete()
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=data.get('last_msg_id'),
+        text="Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇",
+        reply_markup=kb_details()
+    )
 
 @dp.callback_query(F.data == "finish_all")
 async def finish_survey(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     u = f"@{call.from_user.username}" if call.from_user.username else call.from_user.full_name
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    
     save_to_csv([now, u, data.get('c_num', '-'), data.get('c_rating', '-'), data.get('pos', '-'), data.get('neg', '-'), '-'])
-    
     if ADMIN_ID:
         try: await bot.send_message(ADMIN_ID, f"📥 ОТЗЫВ №{data.get('c_num')}\n⭐ Оценка: {data.get('c_rating')}/10\n👤 От: {u}")
         except: pass
-        
     await state.clear()
     await call.message.edit_text("✅ Готово! Ваш отзыв отправлен. Спасибо за помощь!", reply_markup=kb_main())
 
 @dp.callback_query(F.data == "start_name")
 async def start_naming(call: types.CallbackQuery, state: FSMContext):
+    await state.update_data(last_msg_id=call.message.message_id)
     await state.set_state(CoffeeReview.brand_naming)
     await call.message.edit_text("Напишите ваш вариант названия бренда для кофе:", reply_markup=kb_back("to_main"))
 
 @dp.message(CoffeeReview.brand_naming)
 async def save_brand_name(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     u = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
     save_to_csv([now, u, '-', '-', '-', '-', message.text])
-    
     if ADMIN_ID:
         try: await bot.send_message(ADMIN_ID, f"💎 Название: {message.text}\n👤 От: {u}")
         except: pass
-        
+    await message.delete()
+    await bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=data.get('last_msg_id'),
+        text="✅ Вариант названия сохранен! Спасибо.",
+        reply_markup=kb_main()
+    )
     await state.clear()
-    await message.answer("✅ Вариант названия сохранен! Спасибо.", reply_markup=kb_main())
 
-# Навигация
 @dp.callback_query(F.data == "to_main")
 async def back_main(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
