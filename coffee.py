@@ -80,11 +80,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def send_data(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         if os.path.exists(FILENAME):
-            await message.answer_document(FSInputFile(FILENAME), caption="Файл с результатами дегустации.")
+            await message.answer_document(FSInputFile(FILENAME), caption="Результаты дегустации.")
         else:
-            await message.answer("Данных пока нет.")
+            await message.answer("Файл еще не создан.")
 
-# Логика дегустации
 @dp.callback_query(F.data == "start_eval")
 async def select_num(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.choosing_number)
@@ -102,10 +101,9 @@ async def select_details(call: types.CallbackQuery, state: FSMContext):
     rat = call.data.split("_")[1]
     await state.update_data(c_rating=rat)
     await state.set_state(CoffeeReview.details)
-    # ДОБАВЛЕНА ПОДСКАЗКА ЗДЕСЬ
     await call.message.edit_text(
         "Вы можете добавить комментарии кнопками ниже.\n\n"
-        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ», чтобы мы получили ваш отзыв!", 
+        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ», чтобы мы получили ваш отзыв!", 
         reply_markup=kb_details()
     )
 
@@ -119,17 +117,18 @@ async def ask_neg(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.writing_neg)
     await call.message.edit_text("Напишите, что вам НЕ понравилось:", reply_markup=kb_back("back_to_details"))
 
+# ИСПРАВЛЕННЫЕ ПОДСКАЗКИ ТУТ
 @dp.message(CoffeeReview.writing_pos)
 async def get_pos(message: types.Message, state: FSMContext):
     await state.update_data(pos=message.text)
     await state.set_state(CoffeeReview.details)
-    await message.answer("Ваш отзыв учтен! Чтобы отправить его нам, нажмите кнопку ниже 👇", reply_markup=kb_details())
+    await message.answer("Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇", reply_markup=kb_details())
 
 @dp.message(CoffeeReview.writing_neg)
 async def get_neg(message: types.Message, state: FSMContext):
     await state.update_data(neg=message.text)
     await state.set_state(CoffeeReview.details)
-    await message.answer("Ваш отзыв учтен! Чтобы отправить его нам, нажмите кнопку ниже 👇", reply_markup=kb_details())
+    await message.answer("Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇", reply_markup=kb_details())
 
 @dp.callback_query(F.data == "finish_all")
 async def finish_survey(call: types.CallbackQuery, state: FSMContext):
@@ -146,7 +145,6 @@ async def finish_survey(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("✅ Готово! Ваш отзыв отправлен. Спасибо за помощь!", reply_markup=kb_main())
 
-# Логика названия (ПУНКТ 1)
 @dp.callback_query(F.data == "start_name")
 async def start_naming(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.brand_naming)
@@ -187,7 +185,7 @@ async def back_details(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.details)
     await call.message.edit_text(
         "Вы можете добавить комментарии кнопками ниже.\n\n"
-        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ», чтобы мы получили ваш отзыв!", 
+        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ», чтобы мы получили ваш отзыв!", 
         reply_markup=kb_details()
     )
 
