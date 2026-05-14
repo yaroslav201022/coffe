@@ -27,17 +27,21 @@ class CoffeeReview(StatesGroup):
     choosing_number = State()
     rating = State()
     details = State()
-    writing_pos = State()
-    writing_neg = State()
+    writing_attr = State()
     brand_naming = State()
 
 def save_to_csv(data_list):
-    file_exists = os.path.isfile(FILENAME)
-    with open(FILENAME, mode='a', newline='', encoding='utf-8-sig') as f:
-        writer = csv.writer(f, delimiter=';')
-        if not file_exists:
-            writer.writerow(['Дата', 'Пользователь', 'Образец №', 'Оценка', 'Понравилось', 'Не понравилось', 'Название'])
-        writer.writerow(data_list)
+    try:
+        file_exists = os.path.isfile(FILENAME)
+        with open(FILENAME, mode='a', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';')
+            if not file_exists:
+                writer.writerow(['Дата', 'Пользователь', 'Образец №', 'Оценка', 'Комментарии', 'Название'])
+            writer.writerow(data_list)
+        return True
+    except Exception as e:
+        logging.error(f"Ошибка записи CSV: {e}")
+        return False
 
 def kb_main():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -56,12 +60,21 @@ def kb_ratings():
     return InlineKeyboardMarkup(inline_keyboard=[row1, row2, [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_nums")]])
 
 def kb_details():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Что понравилось", callback_data="write_pos")],
-        [InlineKeyboardButton(text="❌ Что не понравилось", callback_data="write_neg")],
+    buttons = [
+        [InlineKeyboardButton(text="👃 Аромат молотый", callback_data="attr_Аромат молотый")],
+        [InlineKeyboardButton(text="☕ Аромат заваренный", callback_data="attr_Аромат заваренный")],
+        [InlineKeyboardButton(text="🎭 Вкусовой букет", callback_data="attr_Вкусовой букет")],
+        [InlineKeyboardButton(text="🔄 Послевкусие", callback_data="attr_Послевкусие")],
+        [InlineKeyboardButton(text="🍋 Кислотность", callback_data="attr_Кислотность")],
+        [InlineKeyboardButton(text="🔥 Горечь", callback_data="attr_Горечь")],
+        [InlineKeyboardButton(text="🍬 Сладость", callback_data="attr_Сладость")],
+        [InlineKeyboardButton(text="💧 Плотность", callback_data="attr_Плотность")],
+        [InlineKeyboardButton(text="⭐ Общая оценка", callback_data="attr_Общая оценка")],
+        [InlineKeyboardButton(text="💬 Ваш комментарий", callback_data="attr_Ваш комментарий")],
         [InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ", callback_data="finish_all")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_rat")]
-    ])
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def kb_back(to_where):
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=to_where)]])
@@ -79,6 +92,7 @@ async def send_data(message: types.Message):
 
 @dp.callback_query(F.data == "start_eval")
 async def select_num(call: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     await state.set_state(CoffeeReview.choosing_number)
     await call.message.edit_text("Выберите номер образца (1-5):", reply_markup=kb_numbers())
 
@@ -92,48 +106,47 @@ async def select_rat(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("rat_"))
 async def select_details(call: types.CallbackQuery, state: FSMContext):
     rat = call.data.split("_")[1]
-    await state.update_data(c_rating=rat, last_msg_id=call.message.message_id)
+    await state.update_data(c_rating=rat, last_msg_id=call.message.message_id, all_comments='')
     await state.set_state(CoffeeReview.details)
     await call.message.edit_text(
-        "Вы можете добавить комментарии кнопками ниже.\n\n"
-        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ», чтобы мы получили ваш отзыв!", 
+        "📋 Оцените кофе по характеристикам:\n\n"
+        "Нажимайте на любую кнопку и пишите свой комментарий.\n"
+        "Можно отметить сколько угодно характеристик.\n\n"
+        "⚠️ Когда закончите — обязательно нажмите «🏁 ЗАВЕРШИТЬ»!", 
         reply_markup=kb_details()
     )
 
-# --- ТУТ ИСПРАВЛЕННЫЕ ТЕКСТЫ ---
-@dp.callback_query(F.data == "write_pos")
-async def ask_pos(call: types.CallbackQuery, state: FSMContext):
-    await state.set_state(CoffeeReview.writing_pos)
-    await call.message.edit_text("Напишите в сообщении, что вам ПОНРАВИЛОСЬ в этом кофе:", reply_markup=kb_back("back_to_details"))
-
-@dp.callback_query(F.data == "write_neg")
-async def ask_neg(call: types.CallbackQuery, state: FSMContext):
-    await state.set_state(CoffeeReview.writing_neg)
-    await call.message.edit_text("Напишите в сообщении, что вам НЕ ПОНРАВИЛОСЬ в этом кофе:", reply_markup=kb_back("back_to_details"))
-
-@dp.message(CoffeeReview.writing_pos)
-async def get_pos(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    await state.update_data(pos=message.text)
-    await state.set_state(CoffeeReview.details)
-    await message.delete()
-    await bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=data.get('last_msg_id'),
-        text="Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇",
-        reply_markup=kb_details()
+@dp.callback_query(F.data.startswith("attr_"))
+async def ask_attr_comment(call: types.CallbackQuery, state: FSMContext):
+    attr_name = call.data.split("_", 1)[1]
+    await state.update_data(current_attr=attr_name)
+    await state.set_state(CoffeeReview.writing_attr)
+    await call.message.edit_text(
+        f"✍️ Напишите ваш комментарий по характеристике:\n\n📌 {attr_name}",
+        reply_markup=kb_back("back_to_details")
     )
 
-@dp.message(CoffeeReview.writing_neg)
-async def get_neg(message: types.Message, state: FSMContext):
+@dp.message(CoffeeReview.writing_attr)
+async def save_attr_comment(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    await state.update_data(neg=message.text)
+    attr = data.get('current_attr', 'комментарий')
+    comment = message.text.strip()
+    
+    existing_comments = data.get('all_comments', '')
+    if existing_comments:
+        new_comments = f"{existing_comments}\n[{attr}]: {comment}"
+    else:
+        new_comments = f"[{attr}]: {comment}"
+    
+    await state.update_data(all_comments=new_comments)
     await state.set_state(CoffeeReview.details)
     await message.delete()
+    
     await bot.edit_message_text(
         chat_id=message.chat.id,
         message_id=data.get('last_msg_id'),
-        text="Записано! Чтобы отправить отзыв нам, нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ» 👇",
+        text=f"✅ Записано: [{attr}]: {comment[:50]}...\n\n"
+             f"📝 Вы можете добавить ещё характеристики или нажать «🏁 ЗАВЕРШИТЬ».",
         reply_markup=kb_details()
     )
 
@@ -142,15 +155,28 @@ async def finish_survey(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     u = f"@{call.from_user.username}" if call.from_user.username else call.from_user.full_name
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    save_to_csv([now, u, data.get('c_num', '-'), data.get('c_rating', '-'), data.get('pos', '-'), data.get('neg', '-'), '-'])
+    
+    all_comments = data.get('all_comments', '-')
+    if all_comments == '':
+        all_comments = '-'
+    
+    save_to_csv([now, u, data.get('c_num', '-'), data.get('c_rating', '-'), all_comments, '-'])
+    
     if ADMIN_ID:
-        try: await bot.send_message(ADMIN_ID, f"📥 ОТЗЫВ №{data.get('c_num')}\n⭐ Оценка: {data.get('c_rating')}/10\n👤 От: {u}")
-        except: pass
+        try: 
+            await bot.send_message(ADMIN_ID, f"📥 ОТЗЫВ №{data.get('c_num')}\n"
+                                               f"⭐ Оценка: {data.get('c_rating')}/10\n"
+                                               f"📝 Комментарии:\n{all_comments}\n"
+                                               f"👤 От: {u}")
+        except: 
+            pass
+    
     await state.clear()
     await call.message.edit_text("✅ Готово! Ваш отзыв отправлен. Спасибо за помощь!", reply_markup=kb_main())
 
 @dp.callback_query(F.data == "start_name")
 async def start_naming(call: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     await state.update_data(last_msg_id=call.message.message_id)
     await state.set_state(CoffeeReview.brand_naming)
     await call.message.edit_text("Напишите ваш вариант названия бренда для кофе:", reply_markup=kb_back("to_main"))
@@ -160,7 +186,7 @@ async def save_brand_name(message: types.Message, state: FSMContext):
     data = await state.get_data()
     u = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    save_to_csv([now, u, '-', '-', '-', '-', message.text])
+    save_to_csv([now, u, '-', '-', '-', message.text])
     if ADMIN_ID:
         try: await bot.send_message(ADMIN_ID, f"💎 Название: {message.text}\n👤 От: {u}")
         except: pass
@@ -193,8 +219,10 @@ async def back_rat(call: types.CallbackQuery, state: FSMContext):
 async def back_details(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoffeeReview.details)
     await call.message.edit_text(
-        "Вы можете добавить комментарии кнопками ниже.\n\n"
-        "⚠️ ВАЖНО: Когда закончите, обязательно нажмите кнопку «🏁 ЗАВЕРШИТЬ И ОТПРАВИТЬ», чтобы мы получили ваш отзыв!", 
+        "📋 Оцените кофе по характеристикам:\n\n"
+        "Нажимайте на любую кнопку и пишите свой комментарий.\n"
+        "Можно отметить сколько угодно характеристик.\n\n"
+        "⚠️ Когда закончите — обязательно нажмите «🏁 ЗАВЕРШИТЬ»!", 
         reply_markup=kb_details()
     )
 
